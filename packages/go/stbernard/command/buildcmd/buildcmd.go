@@ -29,7 +29,7 @@ func (s cmd) Run() error {
 		return fmt.Errorf("could not find workspace root: %w", err)
 	} else if modPaths, err := workspace.ParseModulesAbsPaths(cwd); err != nil {
 		return fmt.Errorf("could not parse module absolute paths: %w", err)
-	} else if err := workspace.BuildMainPackages(modPaths); err != nil {
+	} else if err := workspace.BuildMainPackages(cwd, modPaths); err != nil {
 		return fmt.Errorf("could not build main packages: %w", err)
 	} else {
 		return nil

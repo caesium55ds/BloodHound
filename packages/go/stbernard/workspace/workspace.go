@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"golang.org/x/mod/modfile"
@@ -77,8 +78,9 @@ func ParseModulesAbsPaths(cwd string) ([]string, error) {
 // DownloadModules runs go mod download for all module paths passed
 func DownloadModules(modPaths []string) error {
 	var (
-		errs = make([]error, 0)
+		errs []error
 		wg   sync.WaitGroup
+		mu   sync.Mutex
 	)
 
 	for _, modPath := range modPaths {
@@ -88,7 +90,9 @@ func DownloadModules(modPaths []string) error {
 			cmd := exec.Command("go", "mod", "download")
 			cmd.Dir = modPath
 			if err := cmd.Run(); err != nil {
+				mu.Lock()
 				errs = append(errs, fmt.Errorf("failure when running go mod download in %s: %w", modPath, err))
+				mu.Unlock()
 			}
 		}(modPath)
 	}
@@ -101,8 +105,9 @@ func DownloadModules(modPaths []string) error {
 // WorkspaceGenerate runs go generate ./... for all module paths passed
 func WorkspaceGenerate(modPaths []string) error {
 	var (
-		errs = make([]error, 0)
+		errs []error
 		wg   sync.WaitGroup
+		mu   sync.Mutex
 	)
 
 	for _, modPath := range modPaths {
@@ -110,7 +115,9 @@ func WorkspaceGenerate(modPaths []string) error {
 		go func(modPath string) {
 			defer wg.Done()
 			if err := moduleGenerate(modPath); err != nil {
+				mu.Lock()
 				errs = append(errs, fmt.Errorf("failure running code generation for module %s: %w", modPath, err))
+				mu.Unlock()
 			}
 		}(modPath)
 	}
@@ -132,14 +139,29 @@ func SyncWorkspace(cwd string) error {
 }
 
 // BuildMainPackages builds all main packages for a list of module paths
-func BuildMainPackages(modPaths []string) error {
+func BuildMainPackages(workRoot string, modPaths []string) error {
+	var (
+		errs     []error
+		wg       sync.WaitGroup
+		mu       sync.Mutex
+		buildDir = filepath.Join(workRoot, "dist") + string(filepath.Separator)
+	)
+
 	for _, modPath := range modPaths {
-		if err := buildModuleMainPackages(modPath); err != nil {
-			return fmt.Errorf("failed to build main packages")
-		}
+		wg.Add(1)
+		go func(buildDir, modPath string) {
+			defer wg.Done()
+			if err := buildModuleMainPackages(buildDir, modPath); err != nil {
+				mu.Lock()
+				errs = append(errs, fmt.Errorf("failed to build main package: %w", err))
+				mu.Unlock()
+			}
+		}(buildDir, modPath)
 	}
 
-	return nil
+	wg.Wait()
+
+	return errors.Join(errs...)
 }
 
 // moduleListPackages runs go list for the given module and returns the list of packages in that module
@@ -171,24 +193,37 @@ func moduleListPackages(modPath string) ([]Package, error) {
 }
 
 // buildModuleMainPackages runs go build for all main packages in a given module
-func buildModuleMainPackages(modPath string) error {
+func buildModuleMainPackages(buildDir string, modPath string) error {
+	var (
+		wg   sync.WaitGroup
+		errs []error
+		mu   sync.Mutex
+	)
+
 	if packages, err := moduleListPackages(modPath); err != nil {
 		return fmt.Errorf("failed to list module packages: %w", err)
 	} else {
 		for _, p := range packages {
-			if p.Name == "main" {
-				cmd := exec.Command("go", "build")
-				cmd.Dir = p.Dir
-				if err := cmd.Run(); err != nil {
-					return fmt.Errorf("failed running go build: %w", err)
-				} else {
-					slog.Info("Built package", "package", p.Import, "dir", p.Dir)
-					return nil
-				}
+			if p.Name == "main" && !strings.Contains(p.Dir, "plugin") {
+				wg.Add(1)
+				go func(p Package) {
+					defer wg.Done()
+					cmd := exec.Command("go", "build", "-o", buildDir)
+					cmd.Dir = p.Dir
+					if err := cmd.Run(); err != nil {
+						mu.Lock()
+						errs = append(errs, fmt.Errorf("failed running go build for package %s: %w", p.Import, err))
+						mu.Unlock()
+					} else {
+						slog.Info("Built package", "package", p.Import, "dir", p.Dir)
+					}
+				}(p)
 			}
 		}
 
-		return nil
+		wg.Wait()
+
+		return errors.Join(errs...)
 	}
 }
 
@@ -206,8 +241,9 @@ func workFileExists(cwd string) (bool, error) {
 // moduleGenerate runs go generate in each package of the given module
 func moduleGenerate(modPath string) error {
 	var (
+		errs []error
 		wg   sync.WaitGroup
-		errs = make([]error, 0)
+		mu   sync.Mutex
 	)
 
 	if packages, err := moduleListPackages(modPath); err != nil {
@@ -221,7 +257,9 @@ func moduleGenerate(modPath string) error {
 				cmd.Dir = modPath
 				slog.Info("Generating code for package", "package", pkg.Name, "path", pkg.Dir)
 				if err := cmd.Run(); err != nil {
+					mu.Lock()
 					errs = append(errs, fmt.Errorf("failed to generate code for package %s: %w", pkg, err))
+					mu.Unlock()
 				}
 			}(pkg)
 		}
