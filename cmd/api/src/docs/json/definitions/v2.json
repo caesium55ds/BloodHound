@@ -73,10 +73,32 @@
       }
     }
   },
+  "v2.CreateAssetGroupSelectorResponse": {
+    "properties": {
+      "data": {
+        "type": "object",
+        "properties": {
+          "addedMembers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/definitions/model.AssetGroupSelector"
+            }
+          },
+          "removedMembers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/definitions/model.AssetGroupSelector"
+            }
+          }
+        }
+      }
+    }
+  },
   "v2.ClientCreateRequest": {
     "type": "object",
     "required": [
-      "name"
+      "name",
+      "type"
     ],
     "properties": {
       "domain_controller": {
@@ -84,6 +106,12 @@
       },
       "name": {
         "type": "string"
+      },
+      "type": {
+        "type": "string"
+      },
+      "events": {
+        "type": "array"
       }
     }
   },

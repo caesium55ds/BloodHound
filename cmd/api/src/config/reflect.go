@@ -1,22 +1,23 @@
 // Copyright 2023 Specter Ops, Inc.
-// 
+//
 // Licensed under the Apache License, Version 2.0
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
-// 
+//
 //     http://www.apache.org/licenses/LICENSE-2.0
-// 
+//
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-// 
+//
 // SPDX-License-Identifier: Apache-2.0
 
 package config
 
 import (
+	"errors"
 	"fmt"
 	"reflect"
 	"regexp"
@@ -25,10 +26,10 @@ import (
 	"time"
 
 	"github.com/specterops/bloodhound/src/serde"
-	"github.com/specterops/bloodhound/log"
 )
 
 var structTagRegex = regexp.MustCompile(`(\w+):"([^"]+)"`)
+var InvalidConfigurationPathError = errors.New("Unable to find a configuration element by path")
 
 // taggedField represents a struct field by its index and a parsed representation of any tags associated with the
 // struct field.
@@ -253,8 +254,9 @@ func SetValue(target any, path, value string) error {
 		cursor    = indirectOf(target)
 	)
 
-	for idx, nextPathPart := range pathParts {
+	for idx := 0; idx < len(pathParts); idx++ {
 		var (
+			nextPathPart = pathParts[idx]
 			cursorType   = cursor.Type()
 			taggedFields = parseTaggedFields(cursorType)
 		)
@@ -269,24 +271,29 @@ func SetValue(target any, path, value string) error {
 				break
 			}
 
-			if idx+1 < len(pathParts) {
-				remainingFullPath := strings.Join(append([]string{nextPathPart}, pathParts[idx+1:]...), "_")
+			lookahead := idx
+
+			for lookahead < len(pathParts) {
+				// Make sure to add one to lookahead, as we want to get the range starting at base and going 1 or more indexes beyond it
+				remainingFullPath := strings.Join(pathParts[idx:lookahead+1], "_")
 
 				if taggedFieldName == remainingFullPath {
 					cursor = cursor.Field(taggedField.Field)
-
-					if !cursor.CanAddr() {
-						return fmt.Errorf("type %s is not addressable from parent type %T", cursor.Type().Name(), target)
-					}
-
-					return setRawValue(cursor.Addr().Interface(), value)
+					found = true
+					idx = lookahead
+					break
 				}
+
+				lookahead++
+			}
+
+			if found {
+				break
 			}
 		}
 
 		if !found {
-			log.Warnf("Unable to find a configuration element by path: %s", path)
-			return nil
+			return fmt.Errorf("%w: %s", InvalidConfigurationPathError, path)
 		}
 	}
 

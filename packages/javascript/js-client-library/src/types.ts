@@ -148,6 +148,13 @@ export type PostureRequest = {
     sort_by?: string;
 };
 
+export type RiskDetailsRequest = {
+    finding: string;
+    skip: number;
+    limit: number;
+    Accepted?: string;
+};
+
 export type GraphNode = {
     label: string;
     kind: string;
@@ -213,3 +220,8 @@ export type StyledGraphEdge = {
 };
 
 export type FlatGraphResponse = Record<string, StyledGraphNode | StyledGraphEdge>;
+
+export interface CreateUserQueryRequest {
+    name: string;
+    query: string;
+}
