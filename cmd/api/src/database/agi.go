@@ -183,8 +183,11 @@ func (s *BloodhoundDB) CreateAssetGroupSelector(assetGroup model.AssetGroup, spe
 	return assetGroupSelector, CheckError(s.db.Create(&assetGroupSelector))
 }
 
-func (s *BloodhoundDB) UpdateAssetGroupSelectors(ctx ctx.Context, assetGroup model.AssetGroup, selectorSpecs []model.AssetGroupSelectorSpec, systemSelector bool) (model.UpdatedAssetGroupSelectors, error) {
-	var updatedSelectors = model.UpdatedAssetGroupSelectors{}
+func (s *BloodhoundDB) UpdateAssetGroupSelectors(ctx ctx.Context, assetGroup model.AssetGroup, selectorSpecs []model.AssetGroupSelectorSpec, systemSelector bool) (map[string]model.AssetGroupSelectors, error) {
+	var (
+		addedSelectors   = make([]model.AssetGroupSelector, 0)
+		removedSelectors = make([]model.AssetGroupSelector, 0)
+	)
 
 	err := s.db.Transaction(func(tx *gorm.DB) error {
 		for _, selectorSpec := range selectorSpecs {
@@ -200,14 +203,14 @@ func (s *BloodhoundDB) UpdateAssetGroupSelectors(ctx ctx.Context, assetGroup mod
 				if result := tx.Create(&assetGroupSelector); result.Error != nil {
 					return CheckError(result)
 				} else {
-					updatedSelectors.Added = append(updatedSelectors.Added, assetGroupSelector)
+					addedSelectors = append(addedSelectors, assetGroupSelector)
 				}
 
 			case model.SelectorSpecActionRemove:
 				if result := tx.Where("asset_group_id=? AND name=?", assetGroup.ID, selectorSpec.SelectorName).Delete(&model.AssetGroupSelector{}); result.Error != nil {
 					return CheckError(result)
 				} else {
-					updatedSelectors.Removed = append(updatedSelectors.Removed, model.AssetGroupSelector{
+					removedSelectors = append(removedSelectors, model.AssetGroupSelector{
 						AssetGroupID: assetGroup.ID,
 						Name:         selectorSpec.SelectorName,
 						Selector:     selectorSpec.EntityObjectID,
@@ -225,7 +228,10 @@ func (s *BloodhoundDB) UpdateAssetGroupSelectors(ctx ctx.Context, assetGroup mod
 		return nil
 	})
 
-	return updatedSelectors, err
+	return map[string]model.AssetGroupSelectors{
+		"added_selectors":   addedSelectors,
+		"removed_selectors": removedSelectors,
+	}, err
 }
 
 func (s *BloodhoundDB) GetAllAssetGroupSelectors() (model.AssetGroupSelectors, error) {
