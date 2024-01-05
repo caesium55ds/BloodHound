@@ -1,17 +1,17 @@
 // Copyright 2023 Specter Ops, Inc.
-// 
+//
 // Licensed under the Apache License, Version 2.0
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
-// 
+//
 //     http://www.apache.org/licenses/LICENSE-2.0
-// 
+//
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-// 
+//
 // SPDX-License-Identifier: Apache-2.0
 
 package api
@@ -188,7 +188,7 @@ func (s authenticator) ValidateRequestSignature(tokenID uuid.UUID, request *http
 	} else {
 		// Read the body of the request to compute the actual signature. This forces the body into memory so there may
 		// be a scaling pain-point here.
-		if readBody, digestNow, err := GenerateRequestSignature(authToken.Key, requestDate.Format(time.RFC3339), auth.HMAC_SHA2_256, request.Method, request.RequestURI, request.Body); err != nil {
+		if readBody, digestNow, err := GenerateRequestSignature(request.Context(), authToken.Key, requestDate.Format(time.RFC3339), auth.HMAC_SHA2_256, request.Method, request.RequestURI, request.Body); err != nil {
 			return authContext, http.StatusInternalServerError, err
 		} else {
 			request.Body = &readerDelegatedCloser{
