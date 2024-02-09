@@ -135,6 +135,10 @@ func (s *driver) AssertSchema(ctx context.Context, schema graph.Schema) error {
 	return assertSchema(ctx, s, schema)
 }
 
+func (s *driver) SetDefaultGraph(ctx context.Context, schema graph.Graph) error {
+	return nil
+}
+
 func (s *driver) Run(ctx context.Context, query string, parameters map[string]any) error {
 	return s.WriteTransaction(ctx, func(tx graph.Transaction) error {
 		result := tx.Raw(query, parameters)
